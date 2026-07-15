@@ -1734,7 +1734,14 @@
                     }
 
                     this.focusedSectionId = section.id;
-                    this.expandedIds = [section.id];
+                    const rootIds = new Set(this.rootNodes.map(node => node.id));
+
+                    if (options.preserveSelection) {
+                        const nested = this.expandedIds.filter(id => !rootIds.has(id));
+                        this.expandedIds = [section.id, ...nested];
+                    } else {
+                        this.expandedIds = [section.id];
+                    }
 
                     if (!options.preserveSelection) {
                         this.selected = null;
@@ -1869,13 +1876,16 @@
                             const nodeDigits = (node.code || '').replace(/\D/g, '');
 
                             if (nodeDigits !== '' && nodeDigits === targetDigits) {
+                                if (this.canExpand(node)) {
+                                    await this.ensureExpanded(node.id);
+                                }
                                 return true;
                             }
 
                             const matches = nodeDigits !== '' && targetDigits.startsWith(nodeDigits);
 
                             if (matches && this.canExpand(node)) {
-                                await this.toggleExpand(node.id);
+                                await this.ensureExpanded(node.id);
                                 if (await walk(this.childCache[node.id] || [])) {
                                     return true;
                                 }
@@ -1886,6 +1896,29 @@
                     };
 
                     await walk(this.childCache[sectionId] || []);
+                },
+
+                async ensureExpanded(nodeId) {
+                    if (this.isExpanded(nodeId)) {
+                        return;
+                    }
+
+                    if (!this.childCache[nodeId]) {
+                        try {
+                            this.childCache[nodeId] = await this.fetchBranch(nodeId);
+                            this.childCache = { ...this.childCache };
+                        } catch {
+                            this.childCache[nodeId] = [];
+                            this.childCache = { ...this.childCache };
+                        }
+                    }
+
+                    if (!this.childCache[nodeId]?.length) {
+                        this.noChildrenIds = [...this.noChildrenIds, nodeId];
+                        return;
+                    }
+
+                    this.expandedIds = [...this.expandedIds, nodeId];
                 },
 
                 shareUrl(code) {
@@ -2013,14 +2046,55 @@
                 },
 
                 onTreeRowClick(row) {
-                    if (row.code) {
+                    if (this.canExpand(row)) {
+                        this.toggleExpand(row.id);
+                    }
+
+                    if (row.code && row.is_leaf) {
                         this.openCode(row.code);
                         return;
                     }
 
-                    if (this.canExpand(row)) {
-                        this.toggleExpand(row.id);
+                    if (row.code) {
+                        this.focusTreeRow(row);
                     }
+                },
+
+                async focusTreeRow(row) {
+                    const response = await fetch(`/api/tnved/${encodeURIComponent(row.code)}`);
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const item = data.item;
+
+                        this.treeFocus = item;
+                        this.highlightCode = item.code;
+                        this.codeNotFound = false;
+                        this.activeSection = item.section;
+
+                        if (data.is_full_product) {
+                            this.selected = item;
+                            this.children = data.children || [];
+                            this.relatedOkpd2 = data.related_okpd2 || [];
+                            this.siblings = data.siblings || { prev: null, next: null, index: null, total: 0 };
+                            this.pushHistory(item);
+                        } else {
+                            this.selected = null;
+                            this.children = data.children || [];
+                            this.relatedOkpd2 = [];
+                            this.siblings = { prev: null, next: null, index: null, total: 0 };
+                        }
+
+                        this.pushHistoryState(item.code);
+                    } else {
+                        this.highlightCode = row.code;
+                        this.treeFocus = null;
+                        this.selected = null;
+                        this.codeNotFound = false;
+                    }
+
+                    await this.$nextTick();
+                    this.scrollToTreeCode(row.code);
                 },
 
                 async toggleExpand(nodeId) {
