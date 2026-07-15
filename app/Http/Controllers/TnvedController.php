@@ -29,13 +29,15 @@ class TnvedController extends Controller
 
     public function codePage(string $code): View|RedirectResponse
     {
-        $item = TnvedItem::findResolvable($code);
+        $item = TnvedItem::findByExactCode($code);
 
         if (! $item) {
             abort(404);
         }
 
-        return $this->renderIndex($item->code, $item);
+        $seoItem = ! $item->has_children ? $item : null;
+
+        return $this->renderIndex($item->code, $seoItem);
     }
 
     private function renderIndex(?string $initialCode = null, ?TnvedItem $seoItem = null): View
@@ -148,30 +150,17 @@ class TnvedController extends Controller
 
     public function show(string $code): JsonResponse
     {
-        $item = TnvedItem::findResolvable($code);
-
-        if (! $item && TnvedItem::normalizeCode($code) !== '') {
-            $item = TnvedItem::createMissingAncestor($code);
-        }
+        $item = TnvedItem::findByExactCode($code);
 
         if (! $item) {
             return response()->json(['message' => 'Код не найден'], 404);
         }
 
+        $isFullProduct = ! $item->has_children;
         $children = $item->children()->get();
-        $siblings = $this->getSiblings($item);
         $breadcrumb = $item->breadcrumb();
-        $schemeSiblings = $this->schemeSiblings($item);
-        $relatedOkpd2 = Okpd2TnvedMapping::query()
-            ->where('tnved_code', $item->code)
-            ->orderBy('okpd2_code')
-            ->get()
-            ->map(fn (Okpd2TnvedMapping $mapping) => [
-                'code' => $mapping->okpd2_code,
-                'name' => $mapping->okpd2Item?->name,
-            ]);
 
-        return response()->json([
+        $payload = [
             'item' => [
                 ...$this->formatItem($item),
                 'description' => $item->description,
@@ -182,11 +171,32 @@ class TnvedController extends Controller
                 'date_begin' => $item->date_begin?->format('Y-m-d'),
                 'date_end' => $item->date_end?->format('Y-m-d'),
             ],
+            'is_full_product' => $isFullProduct,
+            'mode' => $isFullProduct ? 'product' : 'tree',
             'children' => $children->map(fn (TnvedItem $child) => $this->formatItem($child)),
-            'siblings' => $siblings,
-            'scheme_siblings' => $schemeSiblings,
-            'related_okpd2' => $relatedOkpd2,
-        ]);
+        ];
+
+        if ($isFullProduct) {
+            $payload['siblings'] = $this->getSiblings($item);
+            $payload['related_okpd2'] = Okpd2TnvedMapping::query()
+                ->where('tnved_code', $item->code)
+                ->orderBy('okpd2_code')
+                ->get()
+                ->map(fn (Okpd2TnvedMapping $mapping) => [
+                    'code' => $mapping->okpd2_code,
+                    'name' => $mapping->okpd2Item?->name,
+                ]);
+        } else {
+            $payload['siblings'] = [
+                'prev' => null,
+                'next' => null,
+                'index' => null,
+                'total' => 0,
+            ];
+            $payload['related_okpd2'] = [];
+        }
+
+        return response()->json($payload);
     }
 
     public function search(Request $request): JsonResponse

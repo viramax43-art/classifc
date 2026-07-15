@@ -613,15 +613,36 @@
         .tks-tree-title {
             display: flex;
             align-items: flex-start;
-            gap: 10px;
+            gap: 6px;
             width: 100%;
             border: 0;
             background: transparent;
-            padding: 8px 14px;
+            padding: 6px 10px 6px 8px;
             text-align: left;
             font: inherit;
             cursor: pointer;
             color: inherit;
+        }
+
+        .tks-tree-toggle {
+            flex: 0 0 14px;
+            width: 14px;
+            height: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            font-size: 0.65rem;
+            line-height: 1;
+            transition: transform 0.15s ease;
+        }
+
+        .tks-tree-toggle.is-open {
+            transform: rotate(90deg);
+        }
+
+        .tks-tree-toggle--placeholder {
+            visibility: hidden;
         }
 
         .tks-tree-title:hover {
@@ -630,16 +651,16 @@
 
         .tks-tree-code {
             flex: 0 0 auto;
-            min-width: 6.5em;
-            font: 600 0.8rem/1.35 ui-monospace, Menlo, monospace;
+            min-width: 5.5em;
+            font: 600 0.78rem/1.35 ui-monospace, Menlo, monospace;
             color: #334155;
         }
 
         .tks-tree-name {
             flex: 1;
             min-width: 0;
-            font-size: 0.82rem;
-            line-height: 1.4;
+            font-size: 0.8rem;
+            line-height: 1.35;
         }
 
         .tks-tree-item--folder .tks-tree-name {
@@ -655,12 +676,28 @@
         .tks-tree-item--active > .tks-tree-title {
             background: var(--primary-bg);
             border-left: 3px solid var(--primary);
-            padding-left: 7px;
+            padding-left: 5px;
         }
 
         .tks-tree-kind {
             color: var(--muted);
-            font-weight: 500;
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+
+        .tnved-card-panel {
+            border-top: 1px solid var(--border);
+            margin-top: 8px;
+            padding-top: 12px;
+        }
+
+        .tnved-not-found {
+            padding: 16px;
+            color: var(--muted);
+            font-size: 0.9rem;
+            text-align: center;
         }
 
         .tks-section-row--focused {
@@ -740,6 +777,14 @@
         .main {
             min-height: 320px;
             min-width: 0;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        .tks-product-item,
+        .tks-tree-item {
+            scroll-margin-top: 80px;
         }
 
         .head-breadcrumb {
@@ -1294,7 +1339,7 @@
                                 type="button"
                                 class="row-btn"
                                 :class="{ active: selected?.code === item.code, focused: focusIndex === index }"
-                                @click="openCode(item.code, true)"
+                                @click="openCode(item.code)"
                                 @mouseenter="focusIndex = index"
                             >
                                 <span class="code wide" x-html="highlight(item.display_code || item.code)"></span>
@@ -1329,7 +1374,7 @@
                         <template x-if="history.length > 0">
                             <div class="side-label">Недавние</div>
                             <template x-for="item in history" :key="item.code">
-                                <button type="button" class="row-btn" @click="openCode(item.code, true)">
+                                <button type="button" class="row-btn" @click="openCode(item.code)">
                                     <span class="code wide" x-text="item.code"></span>
                                     <span class="row-text" x-text="truncate(item.name, 32)"></span>
                                 </button>
@@ -1344,10 +1389,30 @@
             </aside>
 
             <main class="panel main" x-ref="mainPanel">
-                <div class="detail" x-show="!selected" x-cloak>
-                    <div class="part-head" style="margin-bottom:12px">
+                <ul class="head-breadcrumb" x-show="navigableBreadcrumb().length" x-cloak>
+                    <li>
+                        <button type="button" @click="goHome()" title="К списку разделов">ТН ВЭД</button>
+                    </li>
+                    <template x-for="crumb in navigableBreadcrumb()" :key="crumb.code + (crumb.is_section ? '_s' : '')">
+                        <li>
+                            <template x-if="!isActiveCrumb(crumb)">
+                                <button type="button" :title="crumb.name" @click="openCrumb(crumb)" x-text="crumbLabel(crumb)"></button>
+                            </template>
+                            <template x-if="isActiveCrumb(crumb)">
+                                <span class="crumb-current" :title="crumb.name" x-text="crumbLabel(crumb)"></span>
+                            </template>
+                        </li>
+                    </template>
+                </ul>
+
+                <div class="detail">
+                    <div class="part-head" style="margin-bottom:8px" x-show="!treeFocus && !selected">
                         <div class="welcome-title" style="margin-bottom:4px">ТН ВЭД ЕАЭС</div>
                     </div>
+
+                    <template x-if="codeNotFound">
+                        <div class="tnved-not-found">Код не найден</div>
+                    </template>
 
                     <template x-if="treeLoading && !rootNodes.length">
                         <div class="tree-loading">Загрузка разделов…</div>
@@ -1368,12 +1433,13 @@
                                             :class="treeItemClass(row)"
                                             :id="'tree-' + row.id"
                                             :data-tree-code="row.code || ''"
-                                            :style="`padding-left:${14 + row.depth * 30}px`"
+                                            :style="`padding-left:${8 + row.depth * 22}px`"
                                         >
                                             <button type="button" class="tks-tree-title" @click="onTreeRowClick(row)">
-                                                <span class="tks-tree-code" x-show="row.display_code" x-text="row.display_code"></span>
+                                                <span class="tks-tree-toggle" :class="{ 'is-open': isExpanded(row.id), 'tks-tree-toggle--placeholder': !canExpand(row) }">▸</span>
+                                                <span class="tks-tree-code" x-show="row.display_code" x-text="groupCodeLabel(row)"></span>
                                                 <span class="tks-tree-name">
-                                                    <span class="tks-tree-kind" x-show="row.is_group">группа </span>
+                                                    <span class="tks-tree-kind" x-show="showGroupKind(row)">Группа </span>
                                                     <span x-text="row.name"></span>
                                                 </span>
                                             </button>
@@ -1385,52 +1451,25 @@
                     </ul>
                 </div>
 
-                <div x-show="selected" x-cloak>
-                    <template x-if="selected">
+                <div class="detail tnved-card-panel" x-show="selected && isFullProduct(selected)" x-cloak>
+                    <template x-if="selected && isFullProduct(selected)">
                     <div>
-                    <ul class="head-breadcrumb" x-show="navigableBreadcrumb().length">
-                        <li>
-                            <button type="button" @click="goHome()" title="К списку разделов">ТН ВЭД</button>
-                        </li>
-                        <template x-for="crumb in navigableBreadcrumb()" :key="crumb.code + (crumb.is_section ? '_s' : '')">
-                            <li>
-                                <template x-if="crumb.code !== selected.code">
-                                    <button type="button" :title="crumb.name" @click="openCrumb(crumb)" x-text="crumb.display_code || crumb.code"></button>
-                                </template>
-                                <template x-if="crumb.code === selected.code">
-                                    <span class="crumb-current" :title="crumb.name" x-text="crumb.display_code || crumb.code"></span>
-                                </template>
-                            </li>
-                        </template>
-                    </ul>
-
-                    <div class="detail">
                         @include('partials.actualization', ['date' => $classifierUpdatedAt, 'compact' => true])
                         <h1 class="tnved-card-title">
                             Информация по товарному коду <span x-text="selected.display_code"></span>
                         </h1>
 
                         <table class="tnved-card-table">
-                            <tbody>
+                            <thead>
                                 <tr>
                                     <th>Код ТН ВЭД ЕАЭС</th>
-                                    <td x-text="selected.display_code"></td>
-                                </tr>
-                                <tr>
                                     <th>Позиция ТН ВЭД ЕАЭС</th>
-                                    <td x-text="selected.name"></td>
                                 </tr>
+                            </thead>
+                            <tbody>
                                 <tr>
-                                    <th>Глава</th>
-                                    <td x-text="selected.section"></td>
-                                </tr>
-                                <tr>
-                                    <th>Уровень</th>
-                                    <td x-text="levelLabel(selected)"></td>
-                                </tr>
-                                <tr x-show="children.length > 0">
-                                    <th>Дочерних кодов</th>
-                                    <td x-text="children.length"></td>
+                                    <td x-text="selected.display_code"></td>
+                                    <td x-text="selected.name || '—'"></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1506,80 +1545,6 @@
                                 </tbody>
                             </table>
                         </div>
-
-                        <div class="scheme-tree">
-                            <div class="block-title">Схема-дерево</div>
-                            <div class="scheme">
-                                <p>Схема иерархии в классификаторе ТН ВЭД для кода <span x-text="selected.display_code"></span>:</p>
-
-                                <div class="scheme-tree-row scheme-tree-level-0 scheme-folder" @click="goHome()">
-                                    <span class="scheme-icon">📂</span>
-                                    <span>ТН ВЭД</span>
-                                    <span class="scheme-tree-muted">ЕТТ ЕАЭС</span>
-                                </div>
-
-                                <template x-for="(node, idx) in schemeNodes()" :key="`scheme_${node.code}_${idx}`">
-                                    <div>
-                                        <div class="scheme-tree-row scheme-folder"
-                                             :class="[`scheme-tree-level-${Math.min(idx + 1, 8)}`, node.code === selected.code ? 'scheme-active' : '']"
-                                             @click="node.code !== selected.code && openCode(node.code)">
-                                            <span>↳</span>
-                                            <span class="scheme-icon" x-text="schemeNodeIcon(node)"></span>
-                                            <span class="scheme-tree-text">
-                                                <strong x-text="node.display_code || node.code"></strong>
-                                                <span x-text="` — ${node.name}`"></span>
-                                                <span class="scheme-tree-muted" x-show="node.code === selected.code"> (текущий уровень)</span>
-                                            </span>
-                                            <button type="button" class="scheme-expand-btn"
-                                                x-show="!node.is_section && schemeSiblings[node.code]?.length > 1"
-                                                @click.stop="schemeExpanded[node.code] = !schemeExpanded[node.code]; schemeExpanded = {...schemeExpanded}"
-                                                x-text="schemeExpanded[node.code] ? '▼' : '▶'"
-                                                :title="schemeExpanded[node.code] ? 'Скрыть соседние коды' : 'Показать соседние коды'">
-                                            </button>
-                                        </div>
-
-                                        <template x-if="schemeSiblings[node.code]?.length > 1 && schemeExpanded[node.code]">
-                                            <div :class="`scheme-tree-level-${Math.min(idx + 1, 8)} scheme-siblings`">
-                                                <template x-for="sib in schemeSiblings[node.code].filter(s => s.code !== node.code)" :key="`sib_${sib.code}`">
-                                                    <div class="scheme-tree-row scheme-sibling" @click="openCode(sib.code)">
-                                                        <span>↳</span>
-                                                        <span class="scheme-icon" x-text="schemeLeafIcon(sib.has_children)"></span>
-                                                        <span class="scheme-tree-text">
-                                                            <span x-text="sib.display_code || sib.code"></span>
-                                                            <span class="scheme-tree-muted" x-text="` — ${sib.name}`"></span>
-                                                        </span>
-                                                    </div>
-                                                </template>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </template>
-
-                                <template x-if="children.length > 0">
-                                    <div :class="`scheme-tree-level-${Math.min(schemeNodes().length + 1, 8)} scheme-siblings`">
-                                        <template x-for="child in children" :key="`scheme_child_${child.code}`">
-                                            <div class="scheme-tree-row scheme-sibling" @click="openCode(child.code)">
-                                                <span>↳</span>
-                                                <span class="scheme-icon" x-text="schemeLeafIcon(child.has_children)"></span>
-                                                <span class="scheme-tree-text">
-                                                    <span x-text="child.display_code || child.code"></span>
-                                                    <span class="scheme-tree-muted" x-text="` — ${child.name}`"></span>
-                                                </span>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </template>
-
-                                <div x-show="children.length === 0">
-                                    <div class="scheme-tree-row" :class="`scheme-tree-level-${Math.min(schemeNodes().length + 1, 8)}`">
-                                        <span>↳</span>
-                                        <span>✖</span>
-                                        <span>нет уточняющих кодов</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                     </div>
                     </template>
                 </div>
@@ -1607,6 +1572,8 @@
                 initialCode: @json($initialCode ?? null),
                 focusedSectionId: null,
                 highlightCode: null,
+                treeFocus: null,
+                codeNotFound: false,
                 totalCount: {{ $totalCount }},
                 query: '',
                 sectionFilter: 'ALL',
@@ -1622,11 +1589,9 @@
                 expandedIds: [],
                 childCache: {},
                 history: [],
-                schemeSiblings: {},
-                schemeCollapsed: {},
-                schemeExpanded: {},
                 toastVisible: false,
                 toastMessage: '',
+                _skipPopstate: false,
 
                 async init() {
                     this.history = this.loadHistory();
@@ -1639,12 +1604,26 @@
                     }
 
                     const code = this.initialCode || this.codeFromPath();
-                    if (code) await this.openCode(code);
+                    if (code) await this.openCode(code, { replace: true });
 
                     window.addEventListener('keydown', (e) => {
                         if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
                             e.preventDefault();
                             this.$refs.searchInput.focus();
+                        }
+                    });
+
+                    window.addEventListener('popstate', () => {
+                        if (this._skipPopstate) {
+                            this._skipPopstate = false;
+                            return;
+                        }
+
+                        const urlCode = this.codeFromPath();
+                        if (urlCode) {
+                            this.openCode(urlCode);
+                        } else {
+                            this.goHome();
                         }
                     });
                 },
@@ -1708,7 +1687,7 @@
 
                 openFocused() {
                     if (this.focusIndex >= 0 && this.searchResults[this.focusIndex]) {
-                        this.openCode(this.searchResults[this.focusIndex].code, true);
+                        this.openCode(this.searchResults[this.focusIndex].code);
                     }
                 },
 
@@ -1755,11 +1734,15 @@
                     }
 
                     this.focusedSectionId = section.id;
-                    // Аккордеон: только один раздел раскрыт, вложенные узлы сбрасываются
                     this.expandedIds = [section.id];
-                    this.selected = null;
-                    this.highlightCode = null;
-                    this.clearCodeFromUrl();
+
+                    if (!options.preserveSelection) {
+                        this.selected = null;
+                        this.treeFocus = null;
+                        this.highlightCode = null;
+                        this.codeNotFound = false;
+                        this.clearCodeFromUrl();
+                    }
 
                     if (options.scroll) {
                         await this.$nextTick();
@@ -1768,11 +1751,36 @@
                 },
 
                 scrollToSection(sectionId) {
-                    this.$refs.mainPanel?.scrollTo?.({ top: 0, behavior: 'smooth' });
-
                     this.$nextTick(() => {
                         const el = document.getElementById('section-' + sectionId);
-                        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        this.scrollTreeElementIntoView(el);
+                    });
+                },
+
+                scrollTreeElementIntoView(el) {
+                    if (!el) {
+                        return;
+                    }
+
+                    const container = this.$refs.mainPanel;
+                    if (!container) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        return;
+                    }
+
+                    const offset = 80;
+                    const containerTop = container.getBoundingClientRect().top;
+                    const elTop = el.getBoundingClientRect().top;
+                    const nextTop = container.scrollTop + (elTop - containerTop) - offset;
+
+                    container.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' });
+                },
+
+                scrollToTreeCode(code) {
+                    this.$nextTick(() => {
+                        const container = this.$refs.mainPanel;
+                        const row = container?.querySelector(`[data-tree-code="${code}"]`);
+                        this.scrollTreeElementIntoView(row);
                     });
                 },
 
@@ -1787,32 +1795,56 @@
                     return this.rootNodes.find(node => (node.section_label || '').toUpperCase().includes(label)) || null;
                 },
 
-                async openCode(code) {
+                async openCode(code, options = {}) {
+                    if (!code) {
+                        return;
+                    }
+
+                    this.codeNotFound = false;
+
                     const response = await fetch(`/api/tnved/${encodeURIComponent(code)}`);
                     if (!response.ok) {
+                        this.selected = null;
+                        this.treeFocus = null;
+                        this.highlightCode = null;
+                        this.children = [];
+                        this.relatedOkpd2 = [];
+                        this.siblings = { prev: null, next: null, index: null, total: 0 };
+                        this.codeNotFound = true;
                         this.showToast('Код не найден');
                         return;
                     }
+
                     const data = await response.json();
-
                     const item = data.item;
-                    const children = data.children || [];
+                    const isFull = !!data.is_full_product;
 
-                    this.selected = item;
-                    this.children = children;
-                    this.relatedOkpd2 = data.related_okpd2 || [];
-                    this.siblings = data.siblings || { prev: null, next: null, index: null, total: 0 };
-                    this.schemeSiblings = data.scheme_siblings || {};
-                    this.activeSection = item.section;
-                    this.schemeCollapsed = {};
-                    this.schemeExpanded = {};
+                    this.treeFocus = item;
+                    this.highlightCode = item.code;
                     this.query = '';
                     this.searchResults = [];
-                    this.pushHistory(item);
-                    this.highlightCode = item.code;
+                    this.activeSection = item.section;
 
                     await this.revealCodeInTree(item);
-                    this.syncCodeToUrl(code);
+
+                    if (isFull) {
+                        this.selected = item;
+                        this.children = data.children || [];
+                        this.relatedOkpd2 = data.related_okpd2 || [];
+                        this.siblings = data.siblings || { prev: null, next: null, index: null, total: 0 };
+                        this.pushHistory(item);
+                    } else {
+                        this.selected = null;
+                        this.children = data.children || [];
+                        this.relatedOkpd2 = [];
+                        this.siblings = { prev: null, next: null, index: null, total: 0 };
+                    }
+
+                    if (options.replace) {
+                        this.syncCodeToUrl(item.code);
+                    } else {
+                        this.pushHistoryState(item.code);
+                    }
                 },
 
                 async revealCodeInTree(item) {
@@ -1821,26 +1853,26 @@
                         return;
                     }
 
-                    await this.toggleSection(section, { scroll: false });
+                    await this.toggleSection(section, { scroll: false, preserveSelection: true, forceExpand: true });
                     this.focusedSectionId = section.id;
 
                     const prefix = item.code.replace(/\D/g, '');
                     await this.expandTreeTowardCode(section.id, prefix);
 
                     await this.$nextTick();
-                    const row = document.querySelector(`[data-tree-code="${item.code}"]`);
-                    row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    this.scrollToTreeCode(item.code);
                 },
 
                 async expandTreeTowardCode(sectionId, targetDigits) {
                     const walk = async (nodes) => {
                         for (const node of nodes || []) {
                             const nodeDigits = (node.code || '').replace(/\D/g, '');
-                            const matches = nodeDigits !== '' && (targetDigits === nodeDigits || targetDigits.startsWith(nodeDigits));
 
-                            if (node.code === targetDigits || (node.is_leaf && nodeDigits === targetDigits)) {
+                            if (nodeDigits !== '' && nodeDigits === targetDigits) {
                                 return true;
                             }
+
+                            const matches = nodeDigits !== '' && targetDigits.startsWith(nodeDigits);
 
                             if (matches && this.canExpand(node)) {
                                 await this.toggleExpand(node.id);
@@ -1902,21 +1934,45 @@
                     history.replaceState({}, '', publicPath);
                 },
 
+                pushHistoryState(code) {
+                    const publicPath = code
+                        ? `${this.tnvedShareUrl}/${this.tnvedCodePrefix}${code}`
+                        : this.tnvedShareUrl;
+
+                    try {
+                        if (window.parent && window.parent !== window) {
+                            this._skipPopstate = true;
+                            window.parent.history.pushState({}, '', publicPath);
+                            return;
+                        }
+                    } catch (_) {}
+
+                    this._skipPopstate = true;
+                    history.pushState({}, '', publicPath);
+                },
+
                 goHome() {
                     this.selected = null;
+                    this.treeFocus = null;
                     this.activeSection = null;
                     this.children = [];
                     this.highlightCode = null;
+                    this.codeNotFound = false;
                     this.focusedSectionId = null;
-                    this.clearCodeFromUrl();
+                    this.pushHistoryState(null);
                 },
 
                 async openCrumb(crumb) {
                     if (crumb.is_section) {
+                        this.selected = null;
+                        this.treeFocus = null;
+                        this.highlightCode = null;
+                        this.codeNotFound = false;
                         const section = this.findRootSectionForChapter(crumb.code);
                         if (section) {
                             await this.focusSection(section);
                         }
+                        this.pushHistoryState(null);
                         return;
                     }
 
@@ -1933,7 +1989,8 @@
                     if (row.is_group) classes.push('tks-tree-item--folder');
                     if (row.is_leaf) classes.push('tks-tree-item--leaf');
                     if (this.canExpand(row)) classes.push('tks-tree-item--expandable');
-                    if (row.code && (row.code === this.highlightCode || row.code === this.selected?.code)) {
+                    const activeCode = this.highlightCode || this.selected?.code;
+                    if (row.code && row.code === activeCode) {
                         classes.push('tks-tree-item--active');
                     }
                     return classes.join(' ');
@@ -1956,18 +2013,13 @@
                 },
 
                 onTreeRowClick(row) {
-                    if (row.is_leaf && row.code) {
+                    if (row.code) {
                         this.openCode(row.code);
                         return;
                     }
 
                     if (this.canExpand(row)) {
                         this.toggleExpand(row.id);
-                        return;
-                    }
-
-                    if (row.code) {
-                        this.openCode(row.code);
                     }
                 },
 
@@ -2011,7 +2063,57 @@
                 },
 
                 navigableBreadcrumb() {
-                    return this.selected?.breadcrumb || [];
+                    const item = this.selected || this.treeFocus;
+                    return item?.breadcrumb || [];
+                },
+
+                isActiveCrumb(crumb) {
+                    const active = this.selected || this.treeFocus;
+                    if (!active) {
+                        return false;
+                    }
+
+                    if (crumb.is_section) {
+                        return !this.isFullProduct(active) && active.section === crumb.code;
+                    }
+
+                    return active.code === crumb.code;
+                },
+
+                crumbLabel(crumb) {
+                    if (crumb.is_section) {
+                        return crumb.display_code || 'Раздел';
+                    }
+
+                    if (crumb.level_name === 'группа' || (crumb.nesting_level ?? crumb.level) === 2) {
+                        return `Группа ${crumb.display_code || crumb.code}`;
+                    }
+
+                    return crumb.display_code || crumb.code;
+                },
+
+                isFullProduct(item) {
+                    if (!item) {
+                        return false;
+                    }
+
+                    return item.has_children === false;
+                },
+
+                showGroupKind(row) {
+                    if (row.is_group) {
+                        return true;
+                    }
+
+                    return row.nesting_level === 2;
+                },
+
+                groupCodeLabel(row) {
+                    if (this.showGroupKind(row) && row.display_code) {
+                        return row.display_code;
+                    }
+
+                    return row.display_code || '';
                 },
 
                 clearCodeFromUrl() {
@@ -2061,52 +2163,6 @@
                 sectionTitle(code) {
                     const s = this.sections.find(x => x.code === code);
                     return s ? s.name : code;
-                },
-
-                levelLabel(item) {
-                    if (!item) return '';
-                    const level = item.nesting_level ?? item.level;
-                    const name = item.level_name ?? 'уровень';
-                    return `${level}, ${name}`;
-                },
-
-                schemeNodes() {
-                    if (!this.selected?.breadcrumb?.length) return [];
-                    return this.selected.breadcrumb
-                        .map(node => ({
-                            code: node.code,
-                            display_code: node.display_code || node.code,
-                            name: node.name || node.code,
-                            is_section: !!node.is_section,
-                        }));
-                },
-
-                schemeNodeIcon(node) {
-                    if (node.is_section) {
-                        return '📂';
-                    }
-
-                    if (node.code === this.selected?.code) {
-                        return this.children.length > 0 ? '📂' : '📄';
-                    }
-
-                    return '📁';
-                },
-
-                schemeLeafIcon(hasChildren) {
-                    return hasChildren ? '📁' : '📄';
-                },
-
-                toggleSchemeLevel(level) {
-                    this.schemeCollapsed[level] = !this.schemeCollapsed[level];
-                    this.schemeCollapsed = { ...this.schemeCollapsed };
-                },
-
-                isSchemeHidden(level) {
-                    for (let l = 0; l < level; l++) {
-                        if (this.schemeCollapsed[l]) return true;
-                    }
-                    return false;
                 },
 
                 childrenIntroText() {

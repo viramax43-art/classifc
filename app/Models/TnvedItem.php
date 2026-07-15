@@ -61,6 +61,33 @@ class TnvedItem extends Model
     }
 
     /**
+     * Точное совпадение по нормализованному коду (без подъёма к предку).
+     */
+    public static function findByExactCode(string $code): ?self
+    {
+        $normalized = self::normalizeCode($code);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        return self::query()->where('code', $normalized)->first();
+    }
+
+    public static function isFullProductCode(string $code): bool
+    {
+        $item = self::findByExactCode($code);
+
+        if ($item) {
+            return ! $item->has_children;
+        }
+
+        $normalized = self::normalizeCode($code);
+
+        return $normalized !== '' && self::resolveLevel($normalized) === 5;
+    }
+
+    /**
      * Найти запись по коду или ближайшему существующему предку.
      */
     public static function findResolvable(string $code): ?self
@@ -95,7 +122,6 @@ class TnvedItem extends Model
             return self::query()->where('code', $code)->first();
         }
 
-        $child = self::query()->where('parent_code', $code)->orderBy('code')->first();
         $parentCode = self::resolveParentCode($code);
 
         if ($parentCode && ! self::query()->where('code', $parentCode)->exists()) {
@@ -105,7 +131,7 @@ class TnvedItem extends Model
         return self::query()->create([
             'code' => $code,
             'display_code' => self::formatDisplayCode($code),
-            'name' => $child?->name ?? '—',
+            'name' => '—',
             'idx' => $code,
             'section' => substr($code, 0, 2),
             'parent_code' => $parentCode,
@@ -232,18 +258,42 @@ class TnvedItem extends Model
                 : null;
         }
 
-        $sectionName = config('tnved.sections.'.$this->section);
+        $part = self::romanPartForChapter($this->section);
+        $sectionName = $part['name'] ?? config('tnved.sections.'.$this->section);
 
         if ($sectionName) {
             array_unshift($trail, [
                 'code' => $this->section,
-                'display_code' => $this->section,
+                'display_code' => $part['label'] ?? 'Раздел',
                 'name' => $sectionName,
                 'section' => $this->section,
                 'is_section' => true,
+                'level_name' => 'раздел',
             ]);
         }
 
         return $trail;
+    }
+
+    /**
+     * @return array{code: string, label: string, name: string}|null
+     */
+    public static function romanPartForChapter(string $chapter): ?array
+    {
+        $chapter = str_pad(preg_replace('/\D/', '', $chapter) ?? '', 2, '0', STR_PAD_LEFT);
+
+        foreach (config('tnved.parts', []) as $part) {
+            if (! in_array($chapter, $part['chapters'] ?? [], true)) {
+                continue;
+            }
+
+            return [
+                'code' => (string) ($part['code'] ?? ''),
+                'label' => (string) ($part['label'] ?? 'Раздел'),
+                'name' => (string) ($part['name'] ?? ''),
+            ];
+        }
+
+        return null;
     }
 }

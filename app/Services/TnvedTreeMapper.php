@@ -39,6 +39,7 @@ class TnvedTreeMapper
             'is_section' => $sectionLabel !== null,
             'is_group' => $isGroup,
             'is_leaf' => $isLeaf,
+            'nesting_level' => $normalizedCode ? TnvedItem::resolveLevel($normalizedCode) : null,
             'has_children' => $isGroup || (! $isLeaf && $rawCode !== ''),
             'date_begin' => $node['DBEGIN'] ?? null,
             'date_end' => $node['DEND'] ?? null,
