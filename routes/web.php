@@ -5,7 +5,13 @@ use App\Http\Controllers\TnvedController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [Okpd2Controller::class, 'index'])->name('okpd2.index');
+Route::get('okpd2-{code}', [Okpd2Controller::class, 'codePage'])
+    ->where('code', '[0-9A-Za-z\.]+')
+    ->name('okpd2.code');
 Route::get('/tnved', [TnvedController::class, 'index'])->name('tnved.index');
+Route::get('tnved/tnved-{code}', [TnvedController::class, 'codePage'])
+    ->where('code', '[0-9]+')
+    ->name('tnved.code');
 
 Route::prefix('api/okpd2')->group(function () {
     Route::get('/sections', [Okpd2Controller::class, 'sections']);

@@ -21,10 +21,17 @@ class TnvedTreeMapper
         $isGroup = $rawCode === '';
         $isLeaf = ! $isGroup && strlen($digits) >= 10;
 
+        $displayCode = null;
+        if ($normalizedCode) {
+            $displayCode = TnvedItem::formatDisplayCode($normalizedCode);
+        } elseif ($rawCode !== '') {
+            $displayCode = $rawCode;
+        }
+
         return [
             'id' => $id,
             'code' => $normalizedCode,
-            'display_code' => $rawCode !== '' ? $rawCode : null,
+            'display_code' => $displayCode,
             'raw_code' => $rawCode !== '' ? $rawCode : null,
             'name' => $text,
             'section_label' => $sectionLabel['prefix'] ?? null,

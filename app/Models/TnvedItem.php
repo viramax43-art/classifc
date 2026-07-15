@@ -180,6 +180,13 @@ class TnvedItem extends Model
     {
         $code = self::normalizeCode($code);
 
+        if (preg_match('/^\d{10}$/', $code) && substr($code, 4, 2) !== '00') {
+            return substr($code, 0, 4).' '
+                .substr($code, 4, 2).' '
+                .substr($code, 6, 3).' '
+                .substr($code, 9, 1);
+        }
+
         return match (self::resolveLevel($code)) {
             1 => substr($code, 0, 2),
             2 => substr($code, 0, 4),

@@ -3,7 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ОКПД 2</title>
+    <title>{{ $seoTitle ?? 'ОКПД 2' }}</title>
+    <meta name="description" content="{{ $seoDescription ?? 'Классификатор ОКПД 2: поиск по коду и названию, навигация по разделам.' }}">
+    <link rel="canonical" href="{{ $canonicalUrl ?? 'https://avaks.online/p/okpd2/' }}">
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600&display=swap" rel="stylesheet">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
@@ -1134,7 +1136,7 @@
                                         <tr>
                                             <td class="td-code" x-text="item.display_code || item.code"></td>
                                             <td>
-                                                <a :href="`${tnvedUrl}?code=${encodeURIComponent(item.code)}`" x-text="item.name || item.code"></a>
+                                                <a :href="tnvedLink(item.code)" x-text="item.name || item.code"></a>
                                             </td>
                                         </tr>
                                     </template>
@@ -1273,6 +1275,10 @@
                 okpd2Url: @json($okpd2Url),
                 tnvedUrl: @json($tnvedUrl),
                 okpd2ShareUrl: @json($okpd2ShareUrl),
+                tnvedShareUrl: @json($tnvedShareUrl),
+                okpd2CodePrefix: 'okpd2-',
+                tnvedCodePrefix: 'tnved-',
+                initialCode: @json($initialCode ?? null),
                 totalCount: {{ $totalCount }},
                 query: '',
                 sectionFilter: 'ALL',
@@ -1297,7 +1303,12 @@
 
                 async init() {
                     this.history = this.loadHistory();
-                    const code = new URLSearchParams(location.search).get('code');
+                    const legacyCode = new URLSearchParams(location.search).get('code');
+                    if (legacyCode) {
+                        location.replace(this.shareUrl(legacyCode));
+                        return;
+                    }
+                    const code = this.initialCode || this.codeFromPath();
                     if (code) await this.openCode(code);
                     window.addEventListener('keydown', (e) => {
                         if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
@@ -1395,24 +1406,37 @@
                 },
 
                 shareUrl(code) {
-                    const url = new URL(this.okpd2ShareUrl, location.origin);
-                    if (code) {
-                        url.searchParams.set('code', code);
-                    } else {
-                        url.searchParams.delete('code');
-                    }
+                    const path = code ? `${this.okpd2ShareUrl}${this.okpd2CodePrefix}${code}` : this.okpd2ShareUrl;
+                    return new URL(path, location.origin).toString();
+                },
 
-                    return url.toString();
+                tnvedLink(code) {
+                    return `${this.tnvedShareUrl}/${this.tnvedCodePrefix}${code}`;
+                },
+
+                codeFromPath() {
+                    const paths = [location.pathname];
+                    try {
+                        if (window.parent && window.parent !== window) {
+                            paths.unshift(window.parent.location.pathname);
+                        }
+                    } catch (_) {}
+                    for (const path of paths) {
+                        const match = path.match(/\/okpd2-([0-9A-Za-z.]+)\/?$/);
+                        if (match) return match[1];
+                    }
+                    return null;
                 },
 
                 syncCodeToUrl(code) {
-                    const url = new URL(location.href);
-                    if (code) {
-                        url.searchParams.set('code', code);
-                    } else {
-                        url.searchParams.delete('code');
-                    }
-                    history.replaceState({}, '', url.pathname + url.search);
+                    const publicPath = code ? `${this.okpd2ShareUrl}${this.okpd2CodePrefix}${code}` : this.okpd2ShareUrl;
+                    try {
+                        if (window.parent && window.parent !== window) {
+                            window.parent.history.replaceState({}, '', publicPath);
+                            return;
+                        }
+                    } catch (_) {}
+                    history.replaceState({}, '', publicPath);
                 },
 
                 goHome() {

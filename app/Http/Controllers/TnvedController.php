@@ -8,22 +8,62 @@ use App\Models\TnvedMeta;
 use App\Services\TksTreeClient;
 use App\Services\TnvedTreeMapper;
 use App\Support\ActualizationFormatter;
+use App\Support\ClassifierUrl;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class TnvedController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View|RedirectResponse
+    {
+        $code = trim((string) $request->query('code', ''));
+
+        if ($code !== '' && preg_match('/^\d+$/', $code)) {
+            return ClassifierUrl::redirectTo(ClassifierUrl::tnvedPublicPath($code));
+        }
+
+        return $this->renderIndex();
+    }
+
+    public function codePage(string $code): View|RedirectResponse
+    {
+        $item = TnvedItem::findResolvable($code);
+
+        if (! $item) {
+            abort(404);
+        }
+
+        return $this->renderIndex($item->code, $item);
+    }
+
+    private function renderIndex(?string $initialCode = null, ?TnvedItem $seoItem = null): View
     {
         $meta = TnvedMeta::query()->latest('id')->first();
         $sections = $this->buildSections();
+
+        $seoTitle = 'ТН ВЭД — классификатор товаров';
+        $seoDescription = 'Классификатор ТН ВЭД: дерево разделов, поиск по коду и названию, связи с ОКПД 2.';
+
+        if ($seoItem) {
+            $displayCode = $seoItem->display_code ?: TnvedItem::formatDisplayCode($seoItem->code);
+            $seoTitle = 'ТН ВЭД '.$displayCode.' — '.$seoItem->name;
+            $seoDescription = mb_substr(trim($seoItem->name), 0, 160);
+        }
 
         return view('tnved.index', [
             'meta' => $meta,
             'classifierUpdatedAt' => ActualizationFormatter::fromMeta($meta),
             'sections' => $sections,
             'totalCount' => TnvedItem::query()->count(),
+            'tnvedParts' => config('tnved.parts', []),
+            'initialCode' => $initialCode,
+            'seoTitle' => $seoTitle,
+            'seoDescription' => $seoDescription,
+            'canonicalUrl' => ClassifierUrl::absolute(
+                ClassifierUrl::tnvedPublicPath($seoItem?->code),
+            ),
         ]);
     }
 
@@ -412,7 +452,7 @@ class TnvedController extends Controller
 
         return [
             'code' => $item->code,
-            'display_code' => $item->display_code,
+            'display_code' => $item->display_code ?: TnvedItem::formatDisplayCode($item->code),
             'name' => $item->name,
             'section' => $item->section,
             'section_name' => config('tnved.sections.'.$item->section),

@@ -7,14 +7,42 @@ use App\Models\Okpd2Meta;
 use App\Models\Okpd2TnvedMapping;
 use App\Models\TnvedItem;
 use App\Support\ActualizationFormatter;
+use App\Support\ClassifierUrl;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class Okpd2Controller extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View|RedirectResponse
+    {
+        $code = trim((string) $request->query('code', ''));
+
+        if ($code !== '') {
+            $normalized = Okpd2Item::normalizeCodeQuery($code);
+
+            if ($normalized !== '') {
+                return ClassifierUrl::redirectTo(ClassifierUrl::okpd2PublicPath($normalized));
+            }
+        }
+
+        return $this->renderIndex();
+    }
+
+    public function codePage(string $code): View|RedirectResponse
+    {
+        $item = Okpd2Item::query()->where('code', $code)->first();
+
+        if (! $item) {
+            abort(404);
+        }
+
+        return $this->renderIndex($item->code, $item);
+    }
+
+    private function renderIndex(?string $initialCode = null, ?Okpd2Item $seoItem = null): View
     {
         $meta = Okpd2Meta::query()->latest('id')->first();
         $sections = collect(config('okpd2.sections'))
@@ -26,11 +54,25 @@ class Okpd2Controller extends Controller
             ->filter(fn (array $section) => $section['count'] > 0)
             ->values();
 
+        $seoTitle = 'ОКПД 2 — классификатор продукции';
+        $seoDescription = 'Классификатор ОКПД 2: поиск по коду и названию, навигация по разделам, связи с ТН ВЭД.';
+
+        if ($seoItem) {
+            $seoTitle = 'ОКПД 2 '.$seoItem->code.' — '.$seoItem->name;
+            $seoDescription = mb_substr(trim($seoItem->name), 0, 160);
+        }
+
         return view('okpd2.index', [
             'meta' => $meta,
             'classifierUpdatedAt' => ActualizationFormatter::fromMeta($meta),
             'sections' => $sections,
             'totalCount' => Okpd2Item::query()->count(),
+            'initialCode' => $initialCode,
+            'seoTitle' => $seoTitle,
+            'seoDescription' => $seoDescription,
+            'canonicalUrl' => ClassifierUrl::absolute(
+                ClassifierUrl::okpd2PublicPath($seoItem?->code),
+            ),
         ]);
     }
 
