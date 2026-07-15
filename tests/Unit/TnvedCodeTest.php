@@ -32,6 +32,11 @@ class TnvedCodeTest extends TestCase
         $this->assertSame('2812900000', TnvedItem::normalizeCode('2812900000'));
     }
 
+    public function test_code_lookup_candidates_restore_leading_zero(): void
+    {
+        $this->assertContains('0102211000', TnvedItem::codeLookupCandidates('102211000'));
+    }
+
     public function test_level_name_for_group(): void
     {
         $this->assertSame('группа', TnvedItem::resolveLevelName(2));

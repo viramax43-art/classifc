@@ -65,13 +65,44 @@ class TnvedItem extends Model
      */
     public static function findByExactCode(string $code): ?self
     {
-        $normalized = self::normalizeCode($code);
+        foreach (self::codeLookupCandidates($code) as $candidate) {
+            $item = self::query()->where('code', $candidate)->first();
 
-        if ($normalized === '') {
-            return null;
+            if ($item) {
+                return $item;
+            }
         }
 
-        return self::query()->where('code', $normalized)->first();
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function codeLookupCandidates(string $code): array
+    {
+        $digits = preg_replace('/\D/', '', $code) ?? '';
+
+        if ($digits === '') {
+            return [];
+        }
+
+        $candidates = [];
+
+        $normalized = self::normalizeCode($code);
+        if ($normalized !== '') {
+            $candidates[] = $normalized;
+        }
+
+        if (strlen($digits) === 10) {
+            $candidates[] = $digits;
+        }
+
+        if (strlen($digits) === 9) {
+            $candidates[] = str_pad($digits, 10, '0', STR_PAD_LEFT);
+        }
+
+        return array_values(array_unique($candidates));
     }
 
     public static function isFullProductCode(string $code): bool

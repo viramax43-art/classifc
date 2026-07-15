@@ -37,11 +37,18 @@ class TnvedController extends Controller
 
         $seoItem = ! $item->has_children ? $item : null;
 
-        return $this->renderIndex($item->code, $seoItem);
+        return $this->renderIndex(
+            (string) $item->code,
+            $seoItem,
+            $this->buildShowPayload($item),
+        );
     }
 
-    private function renderIndex(?string $initialCode = null, ?TnvedItem $seoItem = null): View
-    {
+    private function renderIndex(
+        ?string $initialCode = null,
+        ?TnvedItem $seoItem = null,
+        ?array $initialPayload = null,
+    ): View {
         $meta = TnvedMeta::query()->latest('id')->first();
         $sections = $this->buildSections();
 
@@ -60,7 +67,8 @@ class TnvedController extends Controller
             'sections' => $sections,
             'totalCount' => TnvedItem::query()->count(),
             'tnvedParts' => config('tnved.parts', []),
-            'initialCode' => $initialCode,
+            'initialCode' => $initialCode !== null ? (string) $initialCode : null,
+            'initialPayload' => $initialPayload,
             'seoTitle' => $seoTitle,
             'seoDescription' => $seoDescription,
             'canonicalUrl' => ClassifierUrl::absolute(
@@ -156,9 +164,16 @@ class TnvedController extends Controller
             return response()->json(['message' => 'Код не найден'], 404);
         }
 
+        return response()->json($this->buildShowPayload($item));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildShowPayload(TnvedItem $item): array
+    {
         $isFullProduct = ! $item->has_children;
         $children = $item->children()->get();
-        $breadcrumb = $item->breadcrumb();
 
         $payload = [
             'item' => [
@@ -166,14 +181,14 @@ class TnvedController extends Controller
                 'description' => $item->description,
                 'idx' => $item->idx,
                 'ancestors_path' => $item->ancestors_path,
-                'breadcrumb' => $breadcrumb,
+                'breadcrumb' => $item->breadcrumb(),
                 'rates' => $item->rates,
                 'date_begin' => $item->date_begin?->format('Y-m-d'),
                 'date_end' => $item->date_end?->format('Y-m-d'),
             ],
             'is_full_product' => $isFullProduct,
             'mode' => $isFullProduct ? 'product' : 'tree',
-            'children' => $children->map(fn (TnvedItem $child) => $this->formatItem($child)),
+            'children' => $children->map(fn (TnvedItem $child) => $this->formatItem($child))->values()->all(),
         ];
 
         if ($isFullProduct) {
@@ -185,7 +200,7 @@ class TnvedController extends Controller
                 ->map(fn (Okpd2TnvedMapping $mapping) => [
                     'code' => $mapping->okpd2_code,
                     'name' => $mapping->okpd2Item?->name,
-                ]);
+                ])->values()->all();
         } else {
             $payload['siblings'] = [
                 'prev' => null,
@@ -196,7 +211,7 @@ class TnvedController extends Controller
             $payload['related_okpd2'] = [];
         }
 
-        return response()->json($payload);
+        return $payload;
     }
 
     public function search(Request $request): JsonResponse

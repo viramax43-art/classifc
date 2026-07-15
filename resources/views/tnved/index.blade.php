@@ -1570,6 +1570,7 @@
                 okpd2CodePrefix: 'okpd2-',
                 tnvedCodePrefix: 'tnved-',
                 initialCode: @json($initialCode ?? null),
+                initialPayload: @json($initialPayload ?? null),
                 focusedSectionId: null,
                 highlightCode: null,
                 treeFocus: null,
@@ -1603,8 +1604,12 @@
                         return;
                     }
 
-                    const code = this.initialCode || this.codeFromPath();
-                    if (code) await this.openCode(code, { replace: true });
+                    const code = this.normalizeTnvedCode(this.initialCode || this.codeFromPath());
+                    if (this.initialPayload) {
+                        await this.applyShowPayload(this.initialPayload, { replace: true });
+                    } else if (code) {
+                        await this.openCode(code, { replace: true });
+                    }
 
                     window.addEventListener('keydown', (e) => {
                         if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
@@ -1802,14 +1807,42 @@
                     return this.rootNodes.find(node => (node.section_label || '').toUpperCase().includes(label)) || null;
                 },
 
+                normalizeTnvedCode(code) {
+                    if (code === null || code === undefined || code === '') {
+                        return '';
+                    }
+
+                    const digits = String(code).replace(/\D/g, '');
+
+                    if (!digits) {
+                        return '';
+                    }
+
+                    if (digits.length === 10) {
+                        return digits;
+                    }
+
+                    if (digits.length === 9) {
+                        return digits.padStart(10, '0');
+                    }
+
+                    if (digits.length < 10) {
+                        return digits.padEnd(10, '0');
+                    }
+
+                    return digits.slice(0, 10);
+                },
+
                 async openCode(code, options = {}) {
-                    if (!code) {
+                    const normalized = this.normalizeTnvedCode(code);
+
+                    if (!normalized) {
                         return;
                     }
 
                     this.codeNotFound = false;
 
-                    const response = await fetch(`/api/tnved/${encodeURIComponent(code)}`);
+                    const response = await fetch(`/api/tnved/${encodeURIComponent(normalized)}`);
                     if (!response.ok) {
                         this.selected = null;
                         this.treeFocus = null;
@@ -1823,11 +1856,16 @@
                     }
 
                     const data = await response.json();
+                    await this.applyShowPayload(data, options);
+                },
+
+                async applyShowPayload(data, options = {}) {
                     const item = data.item;
                     const isFull = !!data.is_full_product;
 
                     this.treeFocus = item;
                     this.highlightCode = item.code;
+                    this.codeNotFound = false;
                     this.query = '';
                     this.searchResults = [];
                     this.activeSection = item.section;
@@ -1922,8 +1960,9 @@
                 },
 
                 shareUrl(code) {
-                    const path = code
-                        ? `${this.tnvedShareUrl}/${this.tnvedCodePrefix}${code}`
+                    const normalized = this.normalizeTnvedCode(code);
+                    const path = normalized
+                        ? `${this.tnvedShareUrl}/${this.tnvedCodePrefix}${normalized}`
                         : this.tnvedShareUrl;
 
                     return new URL(path, location.origin).toString();
@@ -1953,8 +1992,9 @@
                 },
 
                 syncCodeToUrl(code) {
-                    const publicPath = code
-                        ? `${this.tnvedShareUrl}/${this.tnvedCodePrefix}${code}`
+                    const normalized = this.normalizeTnvedCode(code);
+                    const publicPath = normalized
+                        ? `${this.tnvedShareUrl}/${this.tnvedCodePrefix}${normalized}`
                         : this.tnvedShareUrl;
 
                     try {
@@ -1968,8 +2008,9 @@
                 },
 
                 pushHistoryState(code) {
-                    const publicPath = code
-                        ? `${this.tnvedShareUrl}/${this.tnvedCodePrefix}${code}`
+                    const normalized = this.normalizeTnvedCode(code);
+                    const publicPath = normalized
+                        ? `${this.tnvedShareUrl}/${this.tnvedCodePrefix}${normalized}`
                         : this.tnvedShareUrl;
 
                     try {
@@ -2061,7 +2102,8 @@
                 },
 
                 async focusTreeRow(row) {
-                    const response = await fetch(`/api/tnved/${encodeURIComponent(row.code)}`);
+                    const normalized = this.normalizeTnvedCode(row.code);
+                    const response = await fetch(`/api/tnved/${encodeURIComponent(normalized)}`);
 
                     if (response.ok) {
                         const data = await response.json();
